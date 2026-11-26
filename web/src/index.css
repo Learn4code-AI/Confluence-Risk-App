@@ -38,6 +38,9 @@ button { border: 0; }
 .environment { display: inline-flex; align-items: center; gap: 5px; padding: 7px 9px; color: #1a6a47; background: #e7f4ec; border: 1px solid #badcc8; border-radius: 4px; font-size: 11px; font-weight: 700; white-space: nowrap; }
 .icon-button { width: 36px; height: 36px; display: grid; place-items: center; color: #425166; background: #f6f8fa; border: 1px solid var(--line); border-radius: 4px; }
 .icon-button:hover { color: var(--brand); background: #e9f1f6; }
+.icon-button:disabled { opacity: .55; cursor: wait; }
+.icon-button.refreshing svg { animation: refresh-spin .8s linear infinite; }
+@keyframes refresh-spin { to { transform: rotate(360deg); } }
 
 main { width: min(1440px, 100%); margin: 0 auto; padding: 17px 24px 22px; }
 .page-heading { display: flex; align-items: center; justify-content: space-between; gap: 20px; margin-bottom: 15px; }
@@ -144,7 +147,9 @@ td small { display: block; margin-top: 3px; color: #7b8796; }
 .form-footer { display: flex; align-items: center; justify-content: space-between; gap: 12px; padding: 16px 24px; background: #f5f7f9; border-top: 1px solid #dce2e7; }
 .draft-score { padding: 6px 8px; border-radius: 3px; color: #fff; font-size: 11px; font-weight: 700; }
 .mapping-modal { width: min(860px, 100%); }
-.mapping-list { display: block; max-height: min(62vh, 620px); overflow: auto; }
+.mapping-project-select { display: grid; grid-template-columns: 150px 1fr; align-items: center; gap: 12px; padding: 14px 18px; background: #edf3f6; border-bottom: 1px solid #d7e1e6; color: #334b5e; font-size: 11px; font-weight: 700; }
+.mapping-project-select select { width: 100%; min-height: 39px; padding: 8px 10px; color: var(--ink); background: #fff; border: 1px solid #aebdc8; border-radius: 4px; }
+.mapping-list { display: block; max-height: min(52vh, 560px); overflow: auto; }
 .mapping-list-header { position: sticky; top: 0; z-index: 2; display: grid; grid-template-columns: minmax(220px, .8fr) 1.4fr; gap: 12px; padding: 9px 18px; color: #f3f7fa; background: #526171; font-size: 10px; font-weight: 700; text-transform: uppercase; }
 .mapping-list label { display: grid; grid-template-columns: minmax(220px, .8fr) 1.4fr; align-items: center; gap: 12px; padding: 13px 18px; border-bottom: 1px solid #e4e8eb; }
 .mapping-list label > span { gap: 2px; }
@@ -183,6 +188,7 @@ td small { display: block; margin-top: 3px; color: #7b8796; }
   table { min-width: 760px; }
   .form-grid, .mapping-list { grid-template-columns: 1fr; }
   .form-grid .wide { grid-column: auto; }
+  .mapping-project-select { grid-template-columns: 1fr; gap: 6px; }
   .mapping-list-header { display: none; }
   .mapping-list label { grid-template-columns: 1fr; }
   .mapping-description { max-width: none; }

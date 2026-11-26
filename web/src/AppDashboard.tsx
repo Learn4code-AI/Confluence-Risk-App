@@ -1,7 +1,7 @@
 import { Fragment, type FormEvent, useEffect, useMemo, useState } from 'react'
 import {
   AlertTriangle, BarChart3, Check, ChevronDown, ClipboardList, Database,
-  ExternalLink, Link2, ListChecks, Plus, Search, Settings2, SlidersHorizontal, X,
+  ExternalLink, Link2, ListChecks, Plus, RefreshCw, Search, Settings2, SlidersHorizontal, X,
 } from 'lucide-react'
 import { fieldMappingDescriptions, fieldMappingLabels, defaultMappings } from './lib/mapping'
 import { effectiveExposure, formatAssignee, getMatrixCounts, impactLabels, probabilityLabels, riskLevel, riskScore, sortRisksByExposure } from './lib/risk'
@@ -76,8 +76,11 @@ function AppDashboard() {
   const [spaces, setSpaces] = useState<SpaceOption[]>([])
   const [initiatives, setInitiatives] = useState<InitiativeOption[]>([])
   const [fields, setFields] = useState<JiraField[]>([])
+  const [mappingFields, setMappingFields] = useState<JiraField[]>([])
   const [mappings, setMappings] = useState<FieldMappings>(() => loadMappings(''))
+  const [mappingDraft, setMappingDraft] = useState<FieldMappings>(() => loadMappings(''))
   const [selectedSpace, setSelectedSpace] = useState('')
+  const [mappingProject, setMappingProject] = useState('')
   const [initiative, setInitiative] = useState('ALL')
   const [search, setSearch] = useState('')
   const [listView, setListView] = useState<'all' | 'meeting' | 'closed'>('all')
@@ -87,30 +90,62 @@ function AppDashboard() {
   const [showMappings, setShowMappings] = useState(false)
   const [draft, setDraft] = useState(() => emptyRisk('NOVA'))
   const [saving, setSaving] = useState(false)
+  const [refreshing, setRefreshing] = useState(false)
   const [notice, setNotice] = useState('')
 
   useEffect(() => {
     Promise.all([repository.getMeetingContext(), repository.listSpaces()]).then(([currentMeeting, availableSpaces]) => {
       setMeeting(currentMeeting)
       setSpaces(availableSpaces)
-      setSelectedSpace(availableSpaces[0]?.key ?? '')
+      const savedProject = localStorage.getItem('jira-risk-selected-project')
+      const nextProject = availableSpaces.some((project) => project.key === savedProject)
+        ? savedProject!
+        : availableSpaces[0]?.key ?? ''
+      setSelectedSpace(nextProject)
+      setMappingProject(nextProject)
     }).catch((error: Error) => setNotice(error.message))
   }, [repository])
 
   useEffect(() => {
     if (!selectedSpace) return
-    const spaceMappings = loadMappings(selectedSpace)
+    const projectMappings = loadMappings(selectedSpace)
     Promise.all([
-      repository.listRisks(selectedSpace),
+      repository.listRisks(selectedSpace, projectMappings),
       repository.getJiraFields(selectedSpace),
       repository.listInitiatives(selectedSpace),
     ]).then(([items, jiraFields, availableInitiatives]) => {
       setRisks(items)
       setFields(jiraFields)
       setInitiatives(availableInitiatives)
-      setMappings(spaceMappings)
-    }).catch((error: Error) => setNotice(error.message))
+      setMappings(projectMappings)
+    }).catch((error: Error) => {
+      setNotice(error.message)
+    })
   }, [repository, selectedSpace])
+
+  async function refreshProject(projectKey = selectedSpace, projectMappings = loadMappings(projectKey), notify = false) {
+    if (!projectKey) return
+    setRefreshing(true)
+    try {
+      const [items, jiraFields, availableInitiatives] = await Promise.all([
+        repository.listRisks(projectKey, projectMappings),
+        repository.getJiraFields(projectKey),
+        repository.listInitiatives(projectKey),
+      ])
+      setSelectedSpace(projectKey)
+      setRisks(items)
+      setFields(jiraFields)
+      setInitiatives(availableInitiatives)
+      setMappings(projectMappings)
+      setSelectedCell('')
+      localStorage.setItem('jira-risk-selected-project', projectKey)
+      if (notify) setNotice(`Refreshed ${projectKey} from Jira.`)
+    } catch (error) {
+      setNotice(error instanceof Error ? error.message : 'Jira data could not be refreshed.')
+    } finally {
+      setRefreshing(false)
+    }
+  }
 
   const spaceRisks = risks.filter((risk) => !selectedSpace || risk.project === selectedSpace)
   const projectRisks = spaceRisks.filter((risk) => initiative === 'ALL' || risk.impactedInitiatives?.some((item) => item.id === initiative || item.key === initiative))
@@ -152,9 +187,9 @@ function AppDashboard() {
     setSaving(true)
     try {
       const created = await repository.createRisk(draft, mappings, meeting.pageId, fields)
-      setRisks((current) => [created, ...current])
       setShowNewRisk(false)
-      setNotice(`${created.key} was created in ${repository.mode.toLowerCase()} mode.`)
+      await refreshProject(draft.project, mappings)
+      setNotice(`${created.key} was created and Jira data was refreshed.`)
     } catch (error) {
       setNotice(error instanceof Error ? error.message : 'The risk could not be created.')
     } finally {
@@ -162,29 +197,43 @@ function AppDashboard() {
     }
   }
 
-  function saveMappings() {
-    localStorage.setItem(`jira-risk-field-mappings:${selectedSpace}`, JSON.stringify(mappings))
+  function openMappings() {
+    setMappingProject(selectedSpace)
+    setMappingDraft(loadMappings(selectedSpace))
+    setMappingFields(fields)
+    setShowMappings(true)
+  }
+
+  async function changeMappingProject(projectKey: string) {
+    setMappingProject(projectKey)
+    setMappingDraft(loadMappings(projectKey))
+    try {
+      setMappingFields(await repository.getJiraFields(projectKey))
+    } catch (error) {
+      setMappingFields([])
+      setNotice(error instanceof Error ? error.message : 'Jira fields could not be loaded.')
+    }
+  }
+
+  async function saveMappings() {
+    localStorage.setItem(`jira-risk-field-mappings:${mappingProject}`, JSON.stringify(mappingDraft))
+    localStorage.setItem('jira-risk-selected-project', mappingProject)
     setShowMappings(false)
-    setNotice(`Jira field mappings saved for ${selectedSpace}.`)
+    await refreshProject(mappingProject, mappingDraft, true)
   }
 
   return <div className="app-shell">
     <header className="topbar">
       <div className="brand"><span className="brand-mark"><BarChart3 size={23} /></span><span>Risk matrix</span></div>
       <div className="header-actions">
-        <label className="project-picker space-picker"><span>Jira project</span>
-          <select value={selectedSpace} onChange={(event) => { setSelectedSpace(event.target.value); setInitiative('ALL'); setSelectedCell('') }}>
-            {!spaces.length && <option value="">Loading Jira projects...</option>}
-            {spaces.map((project) => <option value={project.key} key={project.id}>{project.name} ({project.key})</option>)}
-          </select><ChevronDown size={16} />
-        </label>
         <label className="project-picker"><span>Project impact (Initiative)</span>
           <select value={initiative} onChange={(event) => { setInitiative(event.target.value); setSelectedCell('') }}>
             <option value="ALL">All initiatives</option>
             {initiatives.map((item) => <option value={item.key} key={item.id}>{item.name}</option>)}
           </select><ChevronDown size={16} />
         </label>
-        <button className="icon-button" onClick={() => setShowMappings(true)} title="Jira field mappings" aria-label="Jira field mappings"><Settings2 size={19} /></button>
+        <button className={`icon-button ${refreshing ? 'refreshing' : ''}`} onClick={() => void refreshProject(selectedSpace, mappings, true)} disabled={refreshing || !selectedSpace} title="Refresh Jira data" aria-label="Refresh Jira data"><RefreshCw size={18} /></button>
+        <button className="icon-button" onClick={openMappings} title="Jira project and field mappings" aria-label="Jira project and field mappings"><Settings2 size={19} /></button>
         <span className="environment"><Database size={13} />{repository.mode}</span>
       </div>
     </header>
@@ -309,16 +358,20 @@ function AppDashboard() {
     </section></div>}
 
     {showMappings && <div className="modal-backdrop" role="presentation"><section className="modal mapping-modal" role="dialog" aria-modal="true" aria-labelledby="mapping-title">
-      <div className="modal-header"><div><span className="eyebrow"><SlidersHorizontal size={14} /> {selectedSpace} configuration</span><h2 id="mapping-title">Map form fields to Jira</h2><p>Choose fields available for the selected Confluence space and its Jira project.</p></div><button className="icon-button" onClick={() => setShowMappings(false)} aria-label="Close"><X size={19} /></button></div>
+      <div className="modal-header"><div><span className="eyebrow"><SlidersHorizontal size={14} /> Jira project configuration</span><h2 id="mapping-title">Map form fields to Jira</h2><p>Select the Jira project once, then map its Risk fields. Save reloads the dashboard immediately.</p></div><button className="icon-button" onClick={() => setShowMappings(false)} aria-label="Close"><X size={19} /></button></div>
+      <label className="mapping-project-select"><span>Jira project</span><select value={mappingProject} onChange={(event) => void changeMappingProject(event.target.value)}>
+        {!spaces.length && <option value="">Loading Jira projects...</option>}
+        {spaces.map((project) => <option value={project.key} key={project.id}>{project.name} ({project.key})</option>)}
+      </select></label>
       <div className="mapping-list"><div className="mapping-list-header"><span>Value in this app</span><span>Mapped Jira field</span></div>{(Object.keys(fieldMappingLabels) as RiskFieldKey[]).map((key) => <label key={key}>
         <span>{fieldMappingLabels[key]}<small>{key === 'summary' || key === 'description' || key === 'assignee' ? 'Jira system field' : 'Jira custom field'}</small>{fieldMappingDescriptions[key] && <small className="mapping-description">{fieldMappingDescriptions[key]}</small>}</span>
-        <select value={mappings[key]} onChange={(event) => setMappings({ ...mappings, [key]: event.target.value })}>
+        <select value={mappingDraft[key]} onChange={(event) => setMappingDraft({ ...mappingDraft, [key]: event.target.value })}>
           <option value="">Not mapped</option>
-          {fields.map((field) => <option key={field.id} value={field.id}>{field.name} · {field.id}</option>)}
-          {mappings[key] && !fields.some((field) => field.id === mappings[key]) && <option value={mappings[key]}>{mappings[key]} · pending Jira field</option>}
+          {mappingFields.map((field) => <option key={field.id} value={field.id}>{field.name} · {field.id}</option>)}
+          {mappingDraft[key] && !mappingFields.some((field) => field.id === mappingDraft[key]) && <option value={mappingDraft[key]}>{mappingDraft[key]} · pending Jira field</option>}
         </select>
       </label>)}</div>
-      <div className="form-footer"><span className="mapping-note"><Database size={15} /> Stored in this browser for the local trial</span><button className="primary-button" onClick={saveMappings}>Save mappings</button></div>
+      <div className="form-footer"><span className="mapping-note"><Database size={15} /> Saved separately for {mappingProject || 'this Jira project'}</span><button className="primary-button" onClick={() => void saveMappings()} disabled={!mappingProject || refreshing}>{refreshing ? 'Refreshing...' : 'Save and refresh'}</button></div>
     </section></div>}
   </div>
 }

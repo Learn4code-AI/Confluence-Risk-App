@@ -1,6 +1,6 @@
 import { mockInitiatives, mockRisks, mockSpaces, projects } from '../data/mockRisks'
 import { impactTargetKeys, resolveInitiatives, type IssueHierarchyNode } from '../lib/hierarchy'
-import { createJiraFields, defaultMappings, mockJiraFields } from '../lib/mapping'
+import { createJiraFields, mockJiraFields } from '../lib/mapping'
 import type { FieldMappings, InitiativeOption, JiraField, LinkedTicket, MeetingContext, Risk, SpaceOption } from '../types'
 
 export interface RiskRepository {
@@ -8,22 +8,12 @@ export interface RiskRepository {
   getMeetingContext(): Promise<MeetingContext>
   listSpaces(): Promise<SpaceOption[]>
   listInitiatives(spaceKey: string): Promise<InitiativeOption[]>
-  listRisks(spaceKey: string): Promise<Risk[]>
+  listRisks(spaceKey: string, mappings: FieldMappings): Promise<Risk[]>
   createRisk(risk: Omit<Risk, 'id' | 'key' | 'jiraUrl'>, mappings: FieldMappings, meetingPageId: string, jiraFields: JiraField[]): Promise<Risk>
   getJiraFields(spaceKey: string): Promise<JiraField[]>
 }
 
 const storageKey = 'confluence-risk-app-risks'
-
-function readSavedMappings(spaceKey: string): FieldMappings {
-  try {
-    const saved = localStorage.getItem(`jira-risk-field-mappings:${spaceKey}`)
-      ?? localStorage.getItem('jira-risk-field-mappings')
-    return saved ? { ...defaultMappings, ...JSON.parse(saved) } : { ...defaultMappings }
-  } catch {
-    return { ...defaultMappings }
-  }
-}
 
 function numericField(value: unknown) {
   const candidate = typeof value === 'object' && value !== null && 'value' in value
@@ -96,7 +86,7 @@ export class MockRiskRepository implements RiskRepository {
     return mockInitiatives
   }
 
-  async listRisks(spaceKey: string) {
+  async listRisks(spaceKey: string, _mappings: FieldMappings) {
     return readLocalRisks().filter((risk) => !spaceKey || risk.project === spaceKey)
   }
 
@@ -220,8 +210,7 @@ export class ForgeRiskRepository implements RiskRepository {
     return result
   }
 
-  async listRisks(spaceKey: string) {
-    const mappings = readSavedMappings(spaceKey)
+  async listRisks(spaceKey: string, mappings: FieldMappings) {
     const data = await this.request('/rest/api/3/search/jql', 'POST', {
       jql: `project = "${spaceKey.replace(/"/g, '')}" AND issuetype = "Risk" ORDER BY created DESC`,
       maxResults: 200,
