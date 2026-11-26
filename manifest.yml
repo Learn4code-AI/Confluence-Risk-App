@@ -1,0 +1,35 @@
+modules:
+  macro:
+    - key: risk-meeting-macro
+      resource: main
+      title: Register New Risk Box
+      description: Compact Confluence button & 2-area Risk Registration boxes to
+        auto-create Jira Risk tickets on Post.
+  confluence:spacePage:
+    - key: risk-meeting-space
+      resource: main
+      route: risk-notes
+      title: Risk Management Meeting
+  confluence:globalPage:
+    - key: risk-meeting-global
+      resource: main
+      route: risk-meeting
+      title: Risk Management Notes
+resources:
+  - key: main
+    path: web/dist
+permissions:
+  scopes:
+    - read:jira-work
+    - write:jira-work
+    - read:jira-user
+    - read:confluence-content.summary
+    - read:confluence-space.summary
+    - write:confluence-content
+  content:
+    styles:
+      - 'unsafe-inline'
+app:
+  runtime:
+    name: nodejs24.x
+  id: ari:cloud:ecosystem::app/5bff7316-b13c-464d-9dc2-447901559c00
