@@ -145,41 +145,14 @@ export class ForgeRiskRepository implements RiskRepository {
   }
 
   async listSpaces() {
-    if (!window.__bridge) throw new Error('Atlassian Forge bridge is not available.')
-    const errors: number[] = []
-    for (const restPath of [
-      '/wiki/api/v2/spaces?limit=250&sort=name',
-      '/wiki/rest/api/space?limit=250&sort=name',
-    ]) {
-      const result = await window.__bridge.callBridge('fetchProduct', {
-        product: 'confluence',
-        provider: 'confluence',
-        restPath,
-        fetchRequestInit: { method: 'GET', headers: { Accept: 'application/json' } },
-      }) as { status: number; body: string | unknown }
-      if (result.status < 200 || result.status >= 300) {
-        errors.push(result.status)
-        continue
-      }
-      const data = (typeof result.body === 'string' ? JSON.parse(result.body) : result.body) as {
-        results?: Array<{ id: string; key: string; name: string }>
-      }
-      const spaces = (data.results ?? []).map((space) => ({ id: String(space.id), key: space.key, name: space.name }))
-      if (spaces.length) return spaces
+    const data = await this.request('/rest/api/3/project/search?maxResults=100&orderBy=name') as {
+      values?: Array<{ id: string; key: string; name: string }>
     }
-
-    const context = await window.__bridge.callBridge('getContext') as {
-      extension?: { space?: { id?: string; key?: string; name?: string } }
-    }
-    const currentSpace = context.extension?.space
-    if (currentSpace?.key) {
-      return [{
-        id: String(currentSpace.id ?? currentSpace.key),
-        key: currentSpace.key,
-        name: currentSpace.name ?? currentSpace.key,
-      }]
-    }
-    throw new Error(`Confluence space request failed (${errors.join(', ') || 'no response'}).`)
+    return (data.values ?? []).map((project) => ({
+      id: String(project.id),
+      key: project.key,
+      name: project.name,
+    }))
   }
 
   async request(restPath: string, method = 'GET', body?: unknown) {
@@ -250,7 +223,7 @@ export class ForgeRiskRepository implements RiskRepository {
   async listRisks(spaceKey: string) {
     const mappings = readSavedMappings(spaceKey)
     const data = await this.request('/rest/api/3/search/jql', 'POST', {
-      jql: `project = "${spaceKey.replace(/"/g, '')}" AND labels = "confluence-risk" ORDER BY created DESC`,
+      jql: `project = "${spaceKey.replace(/"/g, '')}" AND issuetype = "Risk" ORDER BY created DESC`,
       maxResults: 200,
       fields: [
         'summary', 'description', 'assignee', 'project', 'status', 'issuelinks', 'created', 'labels',
@@ -317,7 +290,7 @@ export class ForgeRiskRepository implements RiskRepository {
         values?: Array<{ id: string; name: string }>
       }
       const issueTypes = typeData.issueTypes ?? typeData.values ?? []
-      const riskType = issueTypes.find((type) => type.name.toLowerCase() === 'risk') ?? issueTypes[0]
+      const riskType = issueTypes.find((type) => type.name.toLowerCase() === 'risk')
       if (!riskType) return []
       const fieldData = await this.request(`/rest/api/3/issue/createmeta/${encodeURIComponent(spaceKey)}/issuetypes/${encodeURIComponent(riskType.id)}?maxResults=100`) as {
         fields?: Array<{ fieldId?: string; id?: string; name: string; required?: boolean; allowedValues?: unknown[]; schema?: { type?: string; items?: string } }>
@@ -334,9 +307,8 @@ export class ForgeRiskRepository implements RiskRepository {
           return option.value ?? option.name ?? option.label ?? option.id ?? ''
         }).filter(Boolean),
       }))
-    } catch {
-      const fields = await this.request('/rest/api/3/field') as Array<{ id: string; name: string; schema?: { type?: string } }>
-      return fields.map((field) => ({ id: field.id, name: field.name, type: (field.schema?.type ?? 'unknown') as JiraField['type'] }))
+    } catch (error) {
+      throw new Error(`Unable to load Risk fields for Jira project ${spaceKey}: ${error instanceof Error ? error.message : 'unknown error'}`)
     }
   }
 }

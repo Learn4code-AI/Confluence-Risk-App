@@ -172,10 +172,10 @@ function AppDashboard() {
     <header className="topbar">
       <div className="brand"><span className="brand-mark"><BarChart3 size={23} /></span><span>Risk matrix</span></div>
       <div className="header-actions">
-        <label className="project-picker space-picker"><span>Confluence space</span>
+        <label className="project-picker space-picker"><span>Jira project</span>
           <select value={selectedSpace} onChange={(event) => { setSelectedSpace(event.target.value); setInitiative('ALL'); setSelectedCell('') }}>
-            {!spaces.length && <option value="">Loading spaces...</option>}
-            {spaces.map((space) => <option value={space.key} key={space.id}>{space.name} ({space.key})</option>)}
+            {!spaces.length && <option value="">Loading Jira projects...</option>}
+            {spaces.map((project) => <option value={project.key} key={project.id}>{project.name} ({project.key})</option>)}
           </select><ChevronDown size={16} />
         </label>
         <label className="project-picker"><span>Project impact (Initiative)</span>
@@ -191,7 +191,7 @@ function AppDashboard() {
 
     <main>
       <div className="page-heading">
-        <div><span className="eyebrow">{meeting.title || 'Monthly risk meeting'} · Page {meeting.pageId || 'loading'}</span><h1>Project risk register</h1><p>Assess exposure, prioritize action, and trace every decision back to Jira.</p></div>
+        <div><h1>Project risk register</h1></div>
         <button className="primary-button" onClick={openNewRisk} disabled={!meeting.pageId}><Plus size={17} /> New risk</button>
       </div>
       <div className="dashboard-grid">
@@ -205,10 +205,6 @@ function AppDashboard() {
             }).length} high</small>
           </div>
           <Matrix risks={projectRisks} selectedCell={selectedCell} onSelect={setSelectedCell} />
-          <button className="mapping-strip" onClick={() => setShowMappings(true)}>
-            <span><Link2 size={16} /><strong>Jira mapping</strong><small>{fields.length} fields</small></span>
-            <Settings2 size={17} />
-          </button>
         </aside>
 
         <section className="panel risks-panel">
@@ -298,7 +294,7 @@ function AppDashboard() {
       <form onSubmit={createRisk}>
         <div className="form-grid">
           <label className="wide">Summary *<input required value={draft.summary} onChange={(event) => setDraft({ ...draft, summary: event.target.value })} placeholder="What could happen?" /></label>
-          <label>Project / space<select value={draft.project} onChange={(event) => setDraft({ ...draft, project: event.target.value })}>{spaces.map((space) => <option key={space.id} value={space.key}>{space.key} - {space.name}</option>)}</select></label>
+          <label>Jira project<select value={draft.project} onChange={(event) => setDraft({ ...draft, project: event.target.value })}>{spaces.map((project) => <option key={project.id} value={project.key}>{project.key} - {project.name}</option>)}</select></label>
           <label>Assignee<input value={draft.assignee} onChange={(event) => setDraft({ ...draft, assignee: event.target.value })} placeholder="Jira account or display name" /></label>
           <label>Root cause *<input required value={draft.rootCause} onChange={(event) => setDraft({ ...draft, rootCause: event.target.value })} /></label>
           <label>Effect *<input required value={draft.effect} onChange={(event) => setDraft({ ...draft, effect: event.target.value })} /></label>
