@@ -20,7 +20,7 @@ modules:
       title: Risk Management Notes
 resources:
   - key: main
-    path: web/dist
+    path: web/forge/dist
 permissions:
   scopes:
     - read:jira-work
