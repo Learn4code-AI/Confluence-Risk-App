@@ -146,17 +146,40 @@ export class ForgeRiskRepository implements RiskRepository {
 
   async listSpaces() {
     if (!window.__bridge) throw new Error('Atlassian Forge bridge is not available.')
-    const result = await window.__bridge.callBridge('fetchProduct', {
-      product: 'confluence',
-      provider: 'confluence',
-      restPath: '/wiki/api/v2/spaces?limit=250&sort=name',
-      fetchRequestInit: { method: 'GET', headers: { Accept: 'application/json' } },
-    }) as { status: number; body: string | unknown }
-    if (result.status < 200 || result.status >= 300) throw new Error(`Confluence request failed (${result.status}).`)
-    const data = (typeof result.body === 'string' ? JSON.parse(result.body) : result.body) as {
-      results?: Array<{ id: string; key: string; name: string }>
+    const errors: number[] = []
+    for (const restPath of [
+      '/wiki/api/v2/spaces?limit=250&sort=name',
+      '/wiki/rest/api/space?limit=250&sort=name',
+    ]) {
+      const result = await window.__bridge.callBridge('fetchProduct', {
+        product: 'confluence',
+        provider: 'confluence',
+        restPath,
+        fetchRequestInit: { method: 'GET', headers: { Accept: 'application/json' } },
+      }) as { status: number; body: string | unknown }
+      if (result.status < 200 || result.status >= 300) {
+        errors.push(result.status)
+        continue
+      }
+      const data = (typeof result.body === 'string' ? JSON.parse(result.body) : result.body) as {
+        results?: Array<{ id: string; key: string; name: string }>
+      }
+      const spaces = (data.results ?? []).map((space) => ({ id: String(space.id), key: space.key, name: space.name }))
+      if (spaces.length) return spaces
     }
-    return (data.results ?? []).map((space) => ({ id: space.id, key: space.key, name: space.name }))
+
+    const context = await window.__bridge.callBridge('getContext') as {
+      extension?: { space?: { id?: string; key?: string; name?: string } }
+    }
+    const currentSpace = context.extension?.space
+    if (currentSpace?.key) {
+      return [{
+        id: String(currentSpace.id ?? currentSpace.key),
+        key: currentSpace.key,
+        name: currentSpace.name ?? currentSpace.key,
+      }]
+    }
+    throw new Error(`Confluence space request failed (${errors.join(', ') || 'no response'}).`)
   }
 
   async request(restPath: string, method = 'GET', body?: unknown) {
